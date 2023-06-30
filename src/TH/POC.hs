@@ -88,12 +88,88 @@ genInjectAuxFun dType dSubtype = do
         fieldMapping (targetFieldName, _) = return (targetFieldName, UInfixE (VarE subtypeVarName) (VarE $ mkName "^.") (VarE $ mkName $ drop 1 $ nameBase fieldName))
     mapM fieldMapping targetField
 
+genProjectFun :: Name -> Name -> DecQ
+genProjectFun dType dSubtype = do
+  let globalType = mkName "Global"
+  typeVarName <- newName (map toLower . nameBase $ dType)
+  globalVarName <- newName (map toLower . nameBase $ globalType)
+  subtypeVarName <- newName (map toLower . nameBase $ dSubtype)
+  fieldExprs <- getFieldExpr globalType subtypeVarName
+  let projectFunStmts =
+        [ LetS [ValD (VarP subtypeVarName) (NormalB $ AppE (VarE . mkName $ "projectAux") (VarE typeVarName)) []]
+        , NoBindS $ AppE (VarE $ mkName "TS.modify'") (LamE [VarP globalVarName] (RecUpdE (VarE globalVarName) fieldExprs))
+        ]
+      projectFunBody = NormalB (DoE projectFunStmts)
+      projectFun = FunD (mkName "project") [Clause [VarP typeVarName] projectFunBody []]
+  return projectFun
+  where
+  getFieldExpr :: Name -> Name -> Q [FieldExp]
+  getFieldExpr globalType subtypeVarName = do
+    (_, fieldsInfo) <- getTypeInfo globalType
+    let filterField = filter (matchType dSubtype . snd) fieldsInfo
+        targetField = case filterField of
+          [] -> Nothing
+          (x : _) -> Just x
+        fieldMapping (targetFieldName, VarT _) = return [(targetFieldName, VarE subtypeVarName)]
+        fieldMapping (targetFieldName, AppT _ _) = return [(targetFieldName, AppE (ConE . mkName $ "Just") (VarE subtypeVarName))]
+        fieldMapping (_, _) = return []
+    maybe (return []) fieldMapping targetField
+
+  matchType :: Name -> Type -> Bool
+  matchType x (ConT n) = x == n
+  matchType x (AppT t1 t2) = matchTypeNameBase (mkName "Maybe") t1 && matchType x t2
+  matchType _ _ = False
+
+  matchTypeNameBase :: Name -> Type -> Bool
+  matchTypeNameBase x (ConT n) = nameBase x == nameBase n
+  matchTypeNameBase _ _ = False
+
+genInjectFun :: Name -> Name -> DecQ
+genInjectFun dType dSubtype = do
+  let globalType = mkName "Global"
+  typeVarName <- newName (map toLower . nameBase $ dType)
+  globalVarName <- newName (map toLower . nameBase $ globalType)
+  subtypeVarName <- newName (map toLower . nameBase $ dSubtype)
+  subTypeValue <- getValueFromGlobal globalType globalVarName
+  injectResVar <- newName (map toLower . nameBase $ dType)
+  let injectFunStmts =
+        [ BindS (VarP globalVarName) (VarE . mkName $ "TS.get")
+        , LetS
+            [ ValD (VarP subtypeVarName) (NormalB subTypeValue) []
+            , ValD (VarP injectResVar) (NormalB $ AppE (AppE (VarE . mkName $ "injectAux") (VarE typeVarName)) (VarE subtypeVarName)) []
+            ]
+        , NoBindS $ AppE (VarE . mkName $ "return") (VarE injectResVar)
+        ]
+      injectFunBody = NormalB (DoE injectFunStmts)
+      injectFun = FunD (mkName "inject") [Clause [VarP typeVarName] injectFunBody []]
+  return injectFun
+  where
+  getValueFromGlobal :: Name -> Name -> ExpQ
+  getValueFromGlobal globalType globalVarName = do
+    (_, fieldsInfo) <- getTypeInfo globalType
+    let filterField = filter (matchType dSubtype . snd) fieldsInfo
+    (targetFieldName, _) <- case filterField of
+      [] -> fail (nameBase dSubtype <> " not found in " <> nameBase globalType)
+      (x : _) -> return x
+    return $ AppE (VarE . mkName $ "fromJust") (UInfixE (VarE globalVarName) (VarE . mkName $ "^.") (VarE $ mkName $ drop 1 $ nameBase targetFieldName))
+  
+  matchType :: Name -> Type -> Bool
+  matchType x (ConT n) = x == n
+  matchType x (AppT t1 t2) = matchTypeNameBase (mkName "Maybe") t1 && matchType x t2
+  matchType _ _ = False
+
+  matchTypeNameBase :: Name -> Type -> Bool
+  matchTypeNameBase x (ConT n) = nameBase x == nameBase n
+  matchTypeNameBase _ _ = False
+
 genSubtypeLensInstance :: Name -> Name -> Q [Dec]
 genSubtypeLensInstance dType dSubtype = do
   printFun <- genPrintFun dType dSubtype
   projectAuxFun <- genProjectAuxFun dType dSubtype
   injectAuxFun <- genInjectAuxFun dType dSubtype
+  projectFun <- genProjectFun dType dSubtype
+  injectFun <- genInjectFun dType dSubtype
   let subTypeLensClass = ConT $ mkName "SubtypeLens"
       personType = ConT dType
       personBasicType = ConT dSubtype
-  return [InstanceD Nothing [] (AppT (AppT subTypeLensClass personType) personBasicType) [printFun, projectAuxFun, injectAuxFun]]
+  return [InstanceD Nothing [] (AppT (AppT subTypeLensClass personType) personBasicType) [printFun, projectAuxFun, injectAuxFun, projectFun, injectFun]]

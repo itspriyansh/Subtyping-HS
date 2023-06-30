@@ -19,6 +19,6 @@ class SubtypeLens a b | a -> b, b -> a where
 
   project :: a -> State Global ()
 
-  inject :: a -> b -> State Global ()
+  inject :: a -> State Global a
 
   {-# MINIMAL printSubtype, projectAux, injectAux, project, inject #-}
