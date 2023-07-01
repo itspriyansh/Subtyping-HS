@@ -2,6 +2,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Class.PersonSubtypeLensInst where
 
@@ -38,8 +39,7 @@ g1 = TS.execState (project person >> project city') (Global Nothing Nothing)
 -- Global {_personBasic = Just (PersonBasic {_name = "Priyansh", _age = 22, _city = "Bengaluru"}),
 -- _cityBasic = Just (CityBasic {_name = "Bengaluru", _state = "Karnataka", _country = "Country", _capital = True})}
 
-g2 :: TC.City
-g2 = TS.evalState (inject city') g1
--- >>> g2
--- City {_name = "Bengaluru", _state = "Karnataka", _country = "Country", _tier = "One", _pincode = "590030", _area = 273298, _capital = True}
-
+g3 :: Person
+g3 = TS.evalState (inject person) (personBasic ?~ example $ g1)
+-- >>> g3
+-- Person {_name = "Abhishek", _age = 24, _city = "Prayagraj", _aadhar = "24135413251", _pan = "31425123", _ifsc = "JUSP3242", _acNum = "23513251"}

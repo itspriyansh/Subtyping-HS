@@ -136,7 +136,7 @@ genInjectFun dType dSubtype = do
         [ BindS (VarP globalVarName) (VarE . mkName $ "TS.get")
         , LetS
             [ ValD (VarP subtypeVarName) (NormalB subTypeValue) []
-            , ValD (VarP injectResVar) (NormalB $ AppE (AppE (VarE . mkName $ "injectAux") (VarE typeVarName)) (VarE subtypeVarName)) []
+            , ValD (VarP injectResVar) (NormalB $ AppE (AppE (AppE (VarE . mkName $ "maybe") (VarE typeVarName)) (AppE (VarE . mkName $ "injectAux") (VarE typeVarName))) (VarE subtypeVarName)) []
             ]
         , NoBindS $ AppE (VarE . mkName $ "return") (VarE injectResVar)
         ]
@@ -151,7 +151,7 @@ genInjectFun dType dSubtype = do
     (targetFieldName, _) <- case filterField of
       [] -> fail (nameBase dSubtype <> " not found in " <> nameBase globalType)
       (x : _) -> return x
-    return $ AppE (VarE . mkName $ "fromJust") (UInfixE (VarE globalVarName) (VarE . mkName $ "^.") (VarE $ mkName $ drop 1 $ nameBase targetFieldName))
+    return $ UInfixE (VarE globalVarName) (VarE . mkName $ "^.") (VarE $ mkName $ drop 1 $ nameBase targetFieldName)
   
   matchType :: Name -> Type -> Bool
   matchType x (ConT n) = x == n
@@ -170,6 +170,6 @@ genSubtypeLensInstance dType dSubtype = do
   projectFun <- genProjectFun dType dSubtype
   injectFun <- genInjectFun dType dSubtype
   let subTypeLensClass = ConT $ mkName "SubtypeLens"
-      personType = ConT dType
-      personBasicType = ConT dSubtype
-  return [InstanceD Nothing [] (AppT (AppT subTypeLensClass personType) personBasicType) [printFun, projectAuxFun, injectAuxFun, projectFun, injectFun]]
+      typeT = ConT dType
+      subTypeT = ConT dSubtype
+  return [InstanceD Nothing [] (AppT (AppT subTypeLensClass typeT) subTypeT) [printFun, projectAuxFun, injectAuxFun, projectFun, injectFun]]
