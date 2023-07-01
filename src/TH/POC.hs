@@ -148,10 +148,11 @@ genInjectFun dType dSubtype = do
   getValueFromGlobal globalType globalVarName = do
     (_, fieldsInfo) <- getTypeInfo globalType
     let filterField = filter (matchType dSubtype . snd) fieldsInfo
-    (targetFieldName, _) <- case filterField of
-      [] -> fail (nameBase dSubtype <> " not found in " <> nameBase globalType)
-      (x : _) -> return x
-    return $ UInfixE (VarE globalVarName) (VarE . mkName $ "^.") (VarE $ mkName $ drop 1 $ nameBase targetFieldName)
+        targetField = case filterField of
+          [] -> Nothing
+          (x : _) -> Just x
+        res = maybe (ConE . mkName $ "Nothing") (\ (tfn, _) -> UInfixE (VarE globalVarName) (VarE . mkName $ "^.") (VarE $ mkName $ drop 1 $ nameBase tfn)) targetField
+    return res
   
   matchType :: Name -> Type -> Bool
   matchType x (ConT n) = x == n
